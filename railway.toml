@@ -1,0 +1,2 @@
+[build]
+command = "pnpm install --frozen-lockfile && pnpm --filter @repo/types build && pnpm --filter api build"
