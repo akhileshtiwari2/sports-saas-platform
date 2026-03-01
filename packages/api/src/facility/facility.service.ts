@@ -1,9 +1,8 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanEnforcementService } from '../subscriptions/plan-enforcement.service';
-import { FacilityStatus, CancellationPolicy } from 'types';
+import { FacilityStatus, CancellationPolicy } from '@repo/types';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class FacilityService {
@@ -283,7 +282,7 @@ export class FacilityService {
     if (tenantId && facility.tenantId !== tenantId) {
       throw new ForbiddenException('Facility does not belong to your tenant');
     }
-    const update: Prisma.FacilityUpdateInput = {};
+    const update: Record<string, unknown> = {};
     if (data.cancellationPolicy) update.cancellationPolicy = data.cancellationPolicy;
     if (data.settings) update.settings = data.settings;
     return this.prisma.facility.update({

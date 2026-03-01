@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../payments/stripe.service';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
-import { SubscriptionStatus } from '@prisma/client';
+import { SubscriptionStatus } from '@repo/types';
 
 export interface CreateCheckoutSessionDto {
   planId: string;
@@ -60,7 +60,7 @@ export class SubscriptionsService {
         `Plan does not support ${dto.billingInterval} billing`,
       );
 
-    let customerId: string | null = null;
+    let customerId: string;
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
     });

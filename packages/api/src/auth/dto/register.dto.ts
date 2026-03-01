@@ -1,5 +1,5 @@
 import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole } from 'types';
+import { UserRole } from '@repo/types';
 
 /**
  * DTO for user registration

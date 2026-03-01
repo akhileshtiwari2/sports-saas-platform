@@ -16,8 +16,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { RateLimit } from '../common/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../common/guards/rate-limit.guard';
 import { RateLimitScope } from '../common/guards/rate-limit.guard';
-import { UserRole } from 'types';
-import { BookingStatus } from 'types';
+import { UserRole } from '@repo/types';
+import { BookingStatus } from '@repo/types';
 import { LockSlotDto } from './dto/lock-slot.dto';
 
 @Controller('bookings')

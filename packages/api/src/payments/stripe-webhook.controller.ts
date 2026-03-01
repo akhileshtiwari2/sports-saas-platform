@@ -14,7 +14,7 @@ import { RedisService } from '../redis/redis.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { Public } from '../auth/decorators/public.decorator';
 import Stripe from 'stripe';
-import { BookingStatus, PaymentStatus } from 'types';
+import { BookingStatus, PaymentStatus } from '@repo/types';
 import { LoggerService } from '../common/logger.service';
 import { BookingStateService } from '../booking/booking-state.service';
 import { Decimal } from '@prisma/client/runtime/library';

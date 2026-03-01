@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { UserRole, type JwtPayload } from 'types';
+import { UserRole, type JwtPayload } from '@repo/types';
 
 @Injectable()
 export class AuthService {

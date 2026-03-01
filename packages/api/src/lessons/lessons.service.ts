@@ -2,9 +2,8 @@ import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/com
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanEnforcementService } from '../subscriptions/plan-enforcement.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { BookingStatus, PaymentStatus } from 'types';
+import { BookingStatus, PaymentStatus } from '@repo/types';
 import { StripeService } from '../payments/stripe.service';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class LessonsService {
@@ -15,7 +14,7 @@ export class LessonsService {
   ) {}
 
   async getByTenant(tenantId: string, facilityId?: string) {
-    const where: Prisma.LessonWhereInput = { coach: { facility: { tenantId } } };
+    const where: Record<string, unknown> = { coach: { facility: { tenantId } } };
     if (facilityId) where.coach = { facility: { tenantId }, facilityId };
     return this.prisma.lesson.findMany({
       where,

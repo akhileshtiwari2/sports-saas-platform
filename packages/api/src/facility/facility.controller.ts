@@ -5,7 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
-import { UserRole, CancellationPolicy } from 'types';
+import { UserRole, CancellationPolicy } from '@repo/types';
 
 @Controller('facilities')
 export class FacilityController {

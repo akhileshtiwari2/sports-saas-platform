@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { BookingStatus } from 'types';
-import { BOOKING_TRANSITIONS } from 'types';
+import { BookingStatus } from '@repo/types';
+import { BOOKING_TRANSITIONS } from '@repo/types';
 
 /**
  * Centralized booking state machine.

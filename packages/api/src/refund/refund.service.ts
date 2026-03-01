@@ -5,9 +5,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService, AuditAction } from '../audit/audit.service';
-import { RefundStatus } from 'types';
-import { REFUND_TRANSITIONS } from 'types';
-import { UserRole } from 'types';
+import { RefundStatus } from '@repo/types';
+import { REFUND_TRANSITIONS } from '@repo/types';
+import { UserRole } from '@repo/types';
 
 /** Refund state machine - APPROVED/REJECTED only from PENDING; PROCESSED only from APPROVED */
 function validateRefundTransition(from: string, to: string): void {

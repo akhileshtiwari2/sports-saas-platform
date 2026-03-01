@@ -9,7 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { AuditService } from '../audit/audit.service';
 import { StripeService } from '../payments/stripe.service';
 import { PlanEnforcementService } from '../subscriptions/plan-enforcement.service';
-import { BookingStatus, PaymentStatus } from 'types';
+import { BookingStatus, PaymentStatus } from '@repo/types';
 import { BookingStateService } from './booking-state.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
