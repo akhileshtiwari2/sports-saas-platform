@@ -1,0 +1,673 @@
+// ============================================
+// SPORTS FACILITY SAAS - PRODUCTION SCHEMA
+// ============================================
+// Multi-tenant architecture with tenantId isolation
+// All IDs use UUID for consistency
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  SUPER_ADMIN
+  SALES_ADMIN
+  FACILITY_ADMIN
+  COACH
+  CUSTOMER
+}
+
+enum FacilityStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+  ONBOARDING
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum SlotStatus {
+  AVAILABLE
+  RESERVED
+  BOOKED
+}
+
+enum OnboardingStatus {
+  DOCUMENTS_PENDING
+  DOCUMENTS_SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum CancellationPolicy {
+  FREE_UNTIL_24H
+  HALF_REFUND_12H
+  NO_REFUND
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIALING
+}
+
+// ============================================
+// CORE - TENANT & USER
+// ============================================
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  stripeCustomerId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  facilities          Facility[]
+  users               UserTenant[]
+  subscriptions       Subscription[]
+  tenantSubscriptions  TenantSubscription[]
+  commissions         Commission[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?
+  name          String
+  avatarUrl     String?
+  phone         String?
+  emailVerified Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenancies     UserTenant[]
+  bookings      Booking[]
+  reviews       Review[]
+  wallet        Wallet?
+  notifications Notification[]
+
+  @@index([isActive])
+  @@map("users")
+}
+
+model UserTenant {
+  id        String   @id @default(uuid())
+  userId    String
+  tenantId  String
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("user_tenants")
+}
+
+// ============================================
+// FACILITY & COURTS
+// ============================================
+
+model Facility {
+  id               String          @id @default(uuid())
+  tenantId         String
+  name             String
+  slug             String
+  description      String?
+  address          String
+  city             String
+  state            String?
+  country          String          @default("IN")
+  postalCode       String?
+  latitude         Float?
+  longitude        Float?
+  coverImageUrl    String?
+  status           FacilityStatus  @default(PENDING)
+  onboardingStatus OnboardingStatus @default(DOCUMENTS_PENDING)
+  cancellationPolicy CancellationPolicy @default(FREE_UNTIL_24H)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  documentUrls  Json?
+  settings      Json?   // weekendPricingPercent, defaultSlotDuration, taxPercent
+  kycApprovedAt DateTime?
+  kycApprovedBy String?
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  courts      Court[]
+  coaches     Coach[]
+  memberships MembershipPlan[]
+  promoCodes  PromoCode[]
+  reviews     Review[]
+  bookings    Booking[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([status])
+  @@index([city, country])
+  @@map("facilities")
+}
+
+model Court {
+  id          String   @id @default(uuid())
+  facilityId  String
+  name        String
+  sportType   String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  slots    Slot[]
+  bookings Booking[]
+
+  @@index([facilityId])
+  @@map("courts")
+}
+
+// ============================================
+// SLOTS & BOOKINGS
+// ============================================
+
+model Slot {
+  id           String   @id @default(uuid())
+  courtId      String
+  startTime    DateTime
+  endTime      DateTime
+  basePrice    Decimal  @db.Decimal(10, 2)
+  weekendPrice Decimal? @db.Decimal(10, 2)
+  currency     String   @default("INR")
+  status       SlotStatus @default(AVAILABLE)
+  isBooked     Boolean  @default(false)
+  reservedUntil DateTime?
+  reservedByBookingId String?
+  isRecurring  Boolean  @default(false)
+  recurrenceRule String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  court     Court          @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+  aiPricingLogs AIPricingLog[]
+
+  @@index([courtId])
+  @@index([startTime, endTime])
+  @@index([status, reservedUntil])
+  @@unique([courtId, startTime])
+  @@map("slots")
+}
+
+model Booking {
+  id                 String        @id @default(uuid())
+  tenantId           String
+  facilityId         String
+  courtId            String
+  slotId             String
+  userId             String
+  status             BookingStatus @default(PENDING)
+  totalAmount        Decimal       @db.Decimal(10, 2)
+  currency           String        @default("INR")
+  promoCodeId        String?
+  discountAmount     Decimal?      @db.Decimal(10, 2)
+  commissionRateSnapshot Decimal?  @db.Decimal(5, 2)
+  commissionAmountSnapshot Decimal? @db.Decimal(10, 2)
+  netPayoutSnapshot  Decimal?      @db.Decimal(10, 2)
+  notes              String?
+  cancellationReason String?
+  cancelledAt        DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  facility   Facility   @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  court      Court      @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  slot       Slot       @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promoCode  PromoCode? @relation(fields: [promoCodeId], references: [id])
+  payment    Payment?
+  refunds    Refund[]
+
+  @@index([userId])
+  @@index([facilityId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([tenantId, facilityId])
+  @@index([tenantId, status])
+  @@index([userId, status])
+  @@map("bookings")
+}
+
+// ============================================
+// PAYMENT & REFUND
+// ============================================
+
+model Payment {
+  id                 String        @id @default(uuid())
+  bookingId          String        @unique
+  amount             Decimal       @db.Decimal(10, 2)
+  currency           String        @default("INR")
+  status             PaymentStatus @default(PENDING)
+  stripePaymentId    String?
+  razorpayPaymentId  String?
+  stripeRefundId     String?
+  razorpayRefundId   String?
+  refundAmount       Decimal?      @db.Decimal(10, 2)
+  metadata           Json?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Refund {
+  id               String       @id @default(uuid())
+  bookingId        String
+  amount           Decimal      @db.Decimal(10, 2)
+  reason           String?
+  status           RefundStatus @default(PENDING)
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectedBy       String?
+  rejectedAt       DateTime?
+  rejectionReason  String?
+  processedBy      String?
+  processedAt      DateTime?
+  stripeRefundId   String?
+  razorpayRefundId String?
+  adminOverride    Boolean      @default(false)
+  metadata         Json?        // Audit: decision notes
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("refunds")
+}
+
+// ============================================
+// AUDIT LOG - Enterprise audit trail
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  actorRole  String
+  tenantId   String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([tenantId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// COMMISSION
+// ============================================
+
+model Commission {
+  id           String   @id @default(uuid())
+  tenantId     String
+  percentage   Decimal  @db.Decimal(5, 2)
+  facilityId   String?  // null = default for tenant
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([facilityId])
+  @@map("commissions")
+}
+
+// ============================================
+// PLANS & SAAS SUBSCRIPTION
+// ============================================
+
+model Plan {
+  id                   String   @id @default(uuid())
+  name                 String   @unique  // BASIC, PRO, ENTERPRISE
+  maxCourts            Int
+  maxCoaches           Int
+  maxBookingsPerMonth  Int
+  features             Json     // { analytics: boolean, aiPricing: boolean, ... }
+  priceMonthly         Decimal  @db.Decimal(10, 2)
+  priceYearly          Decimal  @db.Decimal(10, 2)
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  sortOrder            Int      @default(0)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenantSubscriptions    TenantSubscription[]
+  scheduledSubscriptions TenantSubscription[] @relation("ScheduledPlan")
+
+  @@map("plans")
+}
+
+model TenantSubscription {
+  id                     String             @id @default(uuid())
+  tenantId               String
+  planId                 String
+  stripeSubscriptionId  String?            @unique
+  status                 SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart     DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd      Boolean            @default(false)
+  scheduledPlanId       String?            // For downgrade: plan to switch to next cycle
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  scheduledPlan Plan? @relation("ScheduledPlan", fields: [scheduledPlanId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([stripeSubscriptionId])
+  @@map("tenant_subscriptions")
+}
+
+// ============================================
+// LEGACY SUBSCRIPTION (kept for backwards compat)
+// ============================================
+
+model Subscription {
+  id                     String   @id @default(uuid())
+  tenantId               String
+  planName               String
+  stripeSubscriptionId   String?
+  razorpaySubscriptionId String?
+  status                 String
+  currentPeriodStart     DateTime
+  currentPeriodEnd       DateTime
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+// ============================================
+// COACH & LESSONS
+// ============================================
+
+model Coach {
+  id         String    @id @default(uuid())
+  facilityId String
+  userId     String?
+  name       String
+  email      String?
+  phone      String?
+  avatarUrl  String?
+  bio        String?
+  hourlyRate Decimal?  @db.Decimal(10, 2)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+
+  @@index([facilityId])
+  @@map("coaches")
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  coachId     String
+  courtId     String
+  slotId      String
+  bookingId   String?
+  title       String
+  description String?
+  maxStudents Int      @default(1)
+  price       Decimal  @db.Decimal(10, 2)
+  status      String
+  startTime   DateTime
+  endTime     DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([coachId])
+  @@map("lessons")
+}
+
+// ============================================
+// MEMBERSHIPS & PROMOS
+// ============================================
+
+model MembershipPlan {
+  id            String    @id @default(uuid())
+  facilityId    String
+  name          String
+  description   String?
+  price         Decimal   @db.Decimal(10, 2)
+  durationDays  Int
+  discountPercent Decimal? @db.Decimal(5, 2)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+  @@map("membership_plans")
+}
+
+model PromoCode {
+  id           String    @id @default(uuid())
+  facilityId   String
+  code         String
+  discountType String
+  discountValue Decimal  @db.Decimal(10, 2)
+  maxUses      Int?
+  usedCount    Int       @default(0)
+  validFrom    DateTime
+  validUntil   DateTime
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  facility  Facility   @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+
+  @@unique([facilityId, code])
+  @@index([facilityId])
+  @@map("promo_codes")
+}
+
+// ============================================
+// REVIEWS & WALLET
+// ============================================
+
+model Review {
+  id         String   @id @default(uuid())
+  facilityId String
+  userId     String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, userId])
+  @@index([facilityId])
+  @@map("reviews")
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Decimal  @db.Decimal(12, 2) @default(0)
+  currency  String   @default("INR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  walletId      String
+  type          String
+  amount        Decimal  @db.Decimal(12, 2)
+  description   String?
+  referenceType String?
+  referenceId   String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@map("transactions")
+}
+
+// ============================================
+// AI PRICING
+// ============================================
+
+model AIPricingLog {
+  id             String   @id @default(uuid())
+  slotId         String
+  suggestedPrice Decimal  @db.Decimal(10, 2)
+  originalPrice  Decimal  @db.Decimal(10, 2)
+  reasoning      String?
+  demandScore    Float?
+  peakHour       Boolean?
+  applied        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  slot Slot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([slotId])
+  @@map("ai_pricing_logs")
+}
+
+// ============================================
+// DEN - FEATURE FLAGS & LOGS
+// ============================================
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Boolean  @default(false)
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model SystemLog {
+  id         String   @id @default(uuid())
+  action     String
+  entityType String?
+  entityId   String?
+  userId     String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+  @@map("system_logs")
+}
+
+// ============================================
+// SUPPORT
+// ============================================
+
+model SupportTicket {
+  id         String   @id @default(uuid())
+  facilityId String?
+  userId     String?
+  subject    String
+  status     String
+  priority   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String?
+  type      String?
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
